@@ -24,6 +24,10 @@
       font-size: 30px;
     }
 
+    header p {
+      margin: 8px 0;
+    }
+
     #estado {
       color: #9ca3af;
       font-size: 14px;
@@ -34,15 +38,17 @@
       height: 65vh;
       overflow-y: auto;
       padding: 20px;
+      box-sizing: border-box;
     }
 
     .mensaje {
       margin: 12px 0;
       padding: 12px 16px;
       border-radius: 15px;
-      max-width: 80%;
+      max-width: 82%;
       line-height: 1.5;
       white-space: pre-wrap;
+      word-wrap: break-word;
     }
 
     .usuario {
@@ -84,6 +90,7 @@
     button:disabled,
     input:disabled {
       opacity: 0.5;
+      cursor: not-allowed;
     }
   </style>
 </head>
@@ -97,142 +104,93 @@
 </header>
 
 <div id="chat">
+
   <div class="mensaje sensei">
     ¡Hola! 👋 Soy Sensei AI.
     Estoy preparando mi cerebro. La primera carga puede tardar.
   </div>
+
 </div>
 
 <div class="entrada">
+
   <input
     id="mensaje"
+    type="text"
     placeholder="Escribe tu pregunta..."
     disabled
+    autocomplete="off"
   >
 
   <button id="enviar" disabled>
     Enviar
   </button>
+
 </div>
+
 
 <script type="module">
 
-import { pipeline }
-from "https://cdn.jsdelivr.net/npm/@huggingface/transformers";
+import { pipeline } from
+  "https://cdn.jsdelivr.net/npm/@huggingface/transformers";
+
 
 let modelo = null;
 let generando = false;
 
-const chat = document.getElementById("chat");
-const input = document.getElementById("mensaje");
-const boton = document.getElementById("enviar");
-const estado = document.getElementById("estado");
+
+const chat =
+  document.getElementById("chat");
+
+const input =
+  document.getElementById("mensaje");
+
+const boton =
+  document.getElementById("enviar");
+
+const estado =
+  document.getElementById("estado");
+
+
+/* ==========================================
+   MOSTRAR MENSAJES
+========================================== */
 
 function agregarMensaje(texto, tipo) {
 
-  const div = document.createElement("div");
+  const div =
+    document.createElement("div");
 
-  div.className = "mensaje " + tipo;
+  div.className =
+    "mensaje " + tipo;
 
-  div.textContent = texto;
+  div.textContent =
+    texto;
 
   chat.appendChild(div);
 
-  chat.scrollTop = chat.scrollHeight;
+  chat.scrollTop =
+    chat.scrollHeight;
 
   return div;
 }
 
 
-/* ================================
-   FILTRO DE RESPUESTAS DEFECTUOSAS
-================================ */
-
-function respuestaDefectuosa(texto) {
-
-  if (!texto || texto.length < 2) {
-    return true;
-  }
-
-  const palabras = texto
-    .trim()
-    .split(/\s+/);
-
-  /* Demasiadas palabras para un modelo
-     tan pequeño suelen indicar que se perdió */
-  if (palabras.length > 120) {
-    return true;
-  }
-
-  /* Caracteres extraños */
-  const caracteresRaros =
-    (texto.match(/[�]/g) || []).length;
-
-  if (caracteresRaros >= 2) {
-    return true;
-  }
-
-  /* Muchas repeticiones consecutivas */
-  let repeticiones = 0;
-
-  for (let i = 1; i < palabras.length; i++) {
-
-    if (
-      palabras[i].toLowerCase() ===
-      palabras[i - 1].toLowerCase()
-    ) {
-      repeticiones++;
-    }
-  }
-
-  if (repeticiones >= 3) {
-    return true;
-  }
-
-  /* Frases que indican que el modelo
-     comenzó a repetir el prompt */
-  const basura = [
-    "answer:",
-    "response:",
-    "usuario:",
-    "user:",
-    "assistant:",
-    "respuesta:",
-    "immigrante:",
-    "última resposta:"
-  ];
-
-  const minusculas = texto.toLowerCase();
-
-  for (const palabra of basura) {
-
-    if (minusculas.includes(palabra)) {
-      return true;
-    }
-  }
-
-  /* Demasiados símbolos seguidos */
-  if (/[^a-záéíóúüñ0-9\s.,!?¿¡:;'"()\-/%+*=]/gi.test(texto)) {
-
-    const raros =
-      texto.match(/[^a-záéíóúüñ0-9\s.,!?¿¡:;'"()\-/%+*=]/gi);
-
-    if (raros && raros.length > 5) {
-      return true;
-    }
-  }
-
-  return false;
-}
-
-
-/* ================================
+/* ==========================================
    LIMPIAR RESPUESTA
-================================ */
+========================================== */
 
 function limpiarRespuesta(texto) {
 
-  let respuesta = texto.trim();
+  if (!texto) {
+    return "";
+  }
+
+  let respuesta =
+    texto.trim();
+
+
+  /* Quitar el prompt generado */
 
   if (respuesta.includes("Sensei AI:")) {
 
@@ -243,24 +201,33 @@ function limpiarRespuesta(texto) {
       );
   }
 
-  respuesta = respuesta
-    .replace(/^Answer:\s*/i, "")
-    .replace(/^Response:\s*/i, "")
-    .replace(/^Respuesta:\s*/i, "")
-    .replace(/^Sensei AI:\s*/i, "")
-    .replace(/<\|endoftext\|>/gi, "")
-    .trim();
 
-  /* Si vuelve a empezar a escribir el prompt,
-     cortamos ahí */
+  /* Quitar etiquetas */
+
+  respuesta =
+    respuesta
+      .replace(/^Answer:\s*/i, "")
+      .replace(/^Response:\s*/i, "")
+      .replace(/^Respuesta:\s*/i, "")
+      .replace(/^Assistant:\s*/i, "")
+      .replace(/^Usuario:\s*/i, "")
+      .replace(/^User:\s*/i, "")
+      .replace(/<\|endoftext\|>/gi, "")
+      .trim();
+
+
+  /* Cortar si el modelo vuelve a empezar
+     una nueva pregunta */
 
   const cortes = [
     "\nUsuario:",
     "\nUser:",
     "\nPregunta:",
     "\nRespuesta:",
-    "\nAnswer:"
+    "\nAnswer:",
+    "\nAssistant:"
   ];
+
 
   for (const corte of cortes) {
 
@@ -270,17 +237,345 @@ function limpiarRespuesta(texto) {
     if (posicion !== -1) {
 
       respuesta =
-        respuesta.substring(0, posicion).trim();
+        respuesta
+          .substring(0, posicion)
+          .trim();
     }
   }
+
 
   return respuesta;
 }
 
 
-/* ================================
-   CARGAR MODELO
-================================ */
+/* ==========================================
+   DETECTOR DE RESPUESTAS MALAS
+========================================== */
+
+function respuestaDefectuosa(texto) {
+
+  if (!texto) {
+    return true;
+  }
+
+
+  const respuesta =
+    texto.trim();
+
+
+  /* Demasiado corta */
+
+  if (respuesta.length < 2) {
+    return true;
+  }
+
+
+  /* Demasiado larga */
+
+  if (respuesta.length > 650) {
+    return true;
+  }
+
+
+  const palabras =
+    respuesta.split(/\s+/);
+
+
+  /* Demasiadas palabras */
+
+  if (palabras.length > 100) {
+    return true;
+  }
+
+
+  /* ========================================
+     CARACTERES EXTRAÑOS
+  ======================================== */
+
+  const caracteresExtranos =
+    respuesta.match(/[�]/g);
+
+  if (
+    caracteresExtranos &&
+    caracteresExtranos.length >= 1
+  ) {
+    return true;
+  }
+
+
+  /* ========================================
+     REPETICIÓN DE PALABRAS
+  ======================================== */
+
+  let repetidas = 0;
+
+  for (
+    let i = 1;
+    i < palabras.length;
+    i++
+  ) {
+
+    const actual =
+      palabras[i]
+        .toLowerCase()
+        .replace(/[.,!?;:]/g, "");
+
+    const anterior =
+      palabras[i - 1]
+        .toLowerCase()
+        .replace(/[.,!?;:]/g, "");
+
+    if (
+      actual &&
+      actual === anterior
+    ) {
+      repetidas++;
+    }
+  }
+
+
+  if (repetidas >= 2) {
+    return true;
+  }
+
+
+  /* ========================================
+     FRASES REPETIDAS
+  ======================================== */
+
+  const normalizada =
+    respuesta
+      .toLowerCase()
+      .replace(/\s+/g, " ");
+
+
+  const palabrasCortas =
+    normalizada.split(" ");
+
+
+  for (
+    let i = 0;
+    i < palabrasCortas.length - 4;
+    i++
+  ) {
+
+    const frase =
+      palabrasCortas
+        .slice(i, i + 4)
+        .join(" ");
+
+
+    let apariciones = 0;
+    let posicion = 0;
+
+
+    while (
+      (posicion =
+        normalizada.indexOf(
+          frase,
+          posicion
+        )) !== -1
+    ) {
+
+      apariciones++;
+
+      posicion +=
+        frase.length;
+    }
+
+
+    if (apariciones >= 3) {
+      return true;
+    }
+  }
+
+
+  /* ========================================
+     DEMASIADOS NÚMEROS
+  ======================================== */
+
+  const numeros =
+    respuesta.match(/\d/g);
+
+
+  if (
+    numeros &&
+    numeros.length > 8
+  ) {
+    return true;
+  }
+
+
+  /* ========================================
+     NÚMEROS PEGADOS SIN SENTIDO
+  ======================================== */
+
+  if (
+    /\d{6,}/.test(respuesta)
+  ) {
+    return true;
+  }
+
+
+  /* ========================================
+     MEZCLA SOSPECHOSA DE IDIOMAS
+  ======================================== */
+
+  const palabrasIngles =
+    [
+      "answer",
+      "response",
+      "immigrant",
+      "character",
+      "characters",
+      "question",
+      "example",
+      "the",
+      "this",
+      "that",
+      "please",
+      "because",
+      "however"
+    ];
+
+
+  let inglesDetectado = 0;
+
+
+  for (
+    const palabra of palabrasIngles
+  ) {
+
+    const expresion =
+      new RegExp(
+        "\\b" + palabra + "\\b",
+        "i"
+      );
+
+    if (
+      expresion.test(respuesta)
+    ) {
+      inglesDetectado++;
+    }
+  }
+
+
+  if (inglesDetectado >= 2) {
+    return true;
+  }
+
+
+  /* ========================================
+     PALABRAS DEL PROMPT
+  ======================================== */
+
+  const basura =
+    [
+      "usuario:",
+      "user:",
+      "answer:",
+      "response:",
+      "assistant:",
+      "respuesta de sensei",
+      "última resposta:",
+      "immigrante:"
+    ];
+
+
+  const minusculas =
+    respuesta.toLowerCase();
+
+
+  for (
+    const palabra of basura
+  ) {
+
+    if (
+      minusculas.includes(palabra)
+    ) {
+      return true;
+    }
+  }
+
+
+  /* ========================================
+     MUCHOS SÍMBOLOS
+  ======================================== */
+
+  const simbolos =
+    respuesta.match(
+      /[^a-záéíóúüñA-ZÁÉÍÓÚÜÑ0-9\s.,!?¿¡:;'"()\-+*/%=]/g
+    );
+
+
+  if (
+    simbolos &&
+    simbolos.length > 6
+  ) {
+    return true;
+  }
+
+
+  /* ========================================
+     TEXTO CON MUCHAS PALABRAS RARAS
+  ======================================== */
+
+  const letras =
+    respuesta.match(
+      /[a-záéíóúüñ]+/gi
+    );
+
+
+  if (
+    letras &&
+    letras.length >= 8
+  ) {
+
+    let palabrasMuyLargas = 0;
+
+    for (
+      const palabra of letras
+    ) {
+
+      if (
+        palabra.length > 18
+      ) {
+        palabrasMuyLargas++;
+      }
+    }
+
+
+    if (palabrasMuyLargas >= 2) {
+      return true;
+    }
+  }
+
+
+  /* ========================================
+     FRASES QUE PARECEN TEXTO GENERADO
+  ======================================== */
+
+  if (
+    /1234567890/.test(respuesta)
+  ) {
+    return true;
+  }
+
+
+  if (
+    /qwerty/i.test(respuesta)
+  ) {
+    return true;
+  }
+
+
+  return false;
+}
+
+
+/* ==========================================
+   CARGAR INTELIGENCIA ARTIFICIAL
+========================================== */
 
 async function prepararIA() {
 
@@ -289,54 +584,83 @@ async function prepararIA() {
     estado.textContent =
       "🧠 Descargando el cerebro de Sensei AI...";
 
-    modelo = await pipeline(
-      "text-generation",
-      "HuggingFaceTB/SmolLM2-135M-Instruct"
-    );
+
+    modelo =
+      await pipeline(
+        "text-generation",
+        "HuggingFaceTB/SmolLM2-135M-Instruct"
+      );
+
 
     estado.textContent =
       "🟢 Sensei AI está listo";
 
-    input.disabled = false;
-    boton.disabled = false;
+
+    input.disabled =
+      false;
+
+    boton.disabled =
+      false;
 
     input.focus();
+
 
   } catch (error) {
 
     console.error(error);
 
+
     estado.textContent =
       "❌ No se pudo cargar el modelo";
 
+
     agregarMensaje(
-      "No pude cargar mi inteligencia artificial. Recarga la página e inténtalo otra vez.",
+      "No pude cargar mi inteligencia artificial. Recarga la página e inténtalo nuevamente.",
       "sensei"
     );
   }
 }
 
 
-/* ================================
-   GENERAR RESPUESTA
-================================ */
+/* ==========================================
+   ENVIAR PREGUNTA
+========================================== */
 
 async function enviar() {
 
-  const texto = input.value.trim();
+  const texto =
+    input.value.trim();
 
-  if (!texto || !modelo || generando) {
+
+  if (
+    !texto ||
+    !modelo ||
+    generando
+  ) {
     return;
   }
 
-  generando = true;
 
-  agregarMensaje(texto, "usuario");
+  generando =
+    true;
 
-  input.value = "";
 
-  input.disabled = true;
-  boton.disabled = true;
+  agregarMensaje(
+    texto,
+    "usuario"
+  );
+
+
+  input.value =
+    "";
+
+
+  input.disabled =
+    true;
+
+  boton.disabled =
+    true;
+
 
   const respuestaDiv =
     agregarMensaje(
@@ -344,43 +668,52 @@ async function enviar() {
       "sensei"
     );
 
+
   const prompt =
-`Eres Sensei AI, un asistente educativo en español.
+`Eres Sensei AI.
 
-REGLAS IMPORTANTES:
-1. Responde únicamente en español.
-2. Responde directamente a la pregunta.
-3. Sé claro y preciso.
-4. No inventes datos.
-5. No repitas palabras ni frases.
-6. No cambies de tema.
-7. No escribas la pregunta del usuario.
-8. No escribas "Answer", "Response" ni "Usuario".
-9. Si no sabes la respuesta, dilo claramente.
-10. Para música, explica acordes, escalas, teclado y teoría de forma sencilla.
+Eres un asistente educativo que responde EN ESPAÑOL.
 
-Pregunta del usuario:
+REGLAS:
+- Responde directamente.
+- Usa español claro.
+- No inventes información.
+- No repitas palabras.
+- No repitas frases.
+- No escribas números aleatorios.
+- No escribas palabras sin sentido.
+- No mezcles idiomas.
+- No escribas "Answer".
+- No escribas "Response".
+- No escribas "Usuario".
+- No repitas la pregunta.
+- Mantén la respuesta breve.
+- Si no sabes algo, dilo claramente.
+- Ayuda especialmente con música, teclado, acordes, audio, teoría musical y estudio.
+
+Pregunta:
 ${texto}
 
-Respuesta de Sensei AI:`;
+Respuesta:`;
 
 
   try {
 
     const resultado =
-      await modelo(prompt, {
+      await modelo(
+        prompt,
+        {
+          max_new_tokens: 55,
 
-        max_new_tokens: 70,
+          temperature: 0.1,
 
-        temperature: 0.15,
+          do_sample: true,
 
-        do_sample: true,
+          repetition_penalty: 1.4,
 
-        repetition_penalty: 1.35,
-
-        no_repeat_ngram_size: 4
-
-      });
+          no_repeat_ngram_size: 4
+        }
+      );
 
 
     let respuesta =
@@ -388,18 +721,24 @@ Respuesta de Sensei AI:`;
 
 
     respuesta =
-      limpiarRespuesta(respuesta);
+      limpiarRespuesta(
+        respuesta
+      );
 
 
-    /* ================================
+    /* ======================================
        FILTRO FINAL
-    ================================= */
+    ====================================== */
 
-    if (respuestaDefectuosa(respuesta)) {
+    if (
+      respuestaDefectuosa(
+        respuesta
+      )
+    ) {
 
       respuesta =
         "🤔 No pude generar una respuesta confiable. " +
-        "Este modelo es pequeño y a veces se confunde. " +
+        "Mi modelo se confundió esta vez. " +
         "Intenta hacer la pregunta de otra manera.";
     }
 
@@ -412,27 +751,33 @@ Respuesta de Sensei AI:`;
 
     console.error(error);
 
-    respuestaDiv.textContent =
-      "❌ No pude generar una respuesta. Inténtalo nuevamente.";
 
+    respuestaDiv.textContent =
+      "❌ Ocurrió un problema al generar la respuesta.";
   }
 
 
-  input.disabled = false;
-  boton.disabled = false;
+  input.disabled =
+    false;
 
-  generando = false;
+  boton.disabled =
+    false;
+
+  generando =
+    false;
+
 
   input.focus();
+
 
   chat.scrollTop =
     chat.scrollHeight;
 }
 
 
-/* ================================
-   BOTONES
-================================ */
+/* ==========================================
+   ENTER PARA ENVIAR
+========================================== */
 
 boton.addEventListener(
   "click",
@@ -444,7 +789,9 @@ input.addEventListener(
   "keydown",
   function(event) {
 
-    if (event.key === "Enter") {
+    if (
+      event.key === "Enter"
+    ) {
 
       event.preventDefault();
 
@@ -454,9 +801,9 @@ input.addEventListener(
 );
 
 
-/* ================================
-   INICIAR SENSEI AI
-================================ */
+/* ==========================================
+   INICIAR
+========================================== */
 
 prepararIA();
 

@@ -116,7 +116,11 @@ function enviar() {
     chat.scrollTop = chat.scrollHeight;
   }, 500);
 }
-</script>
-
+</script> 
+  document.querySelector("input").addEventListener("keydown", function(event) {
+  if (event.key === "Enter") {
+    enviar();
+  }
+});
 </body>
 </html>

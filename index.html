@@ -122,5 +122,15 @@ function enviar() {
     enviar();
   }
 });
-</body>
+<script type="module">
+  import { pipeline } from
+    "https://cdn.jsdelivr.net/npm/@huggingface/transformers";
+
+  const modelo = await pipeline(
+    "text-generation",
+    "HuggingFaceTB/SmolLM2-135M-Instruct"
+  );
+
+  console.log("🧠 Sensei AI está listo.");
+</script></body>
 </html>

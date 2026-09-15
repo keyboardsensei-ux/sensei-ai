@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Sensei AI</title>
+
   <style>
     body {
       margin: 0;
@@ -23,6 +24,12 @@
       font-size: 30px;
     }
 
+    #estado {
+      color: #9ca3af;
+      font-size: 14px;
+      margin-top: 8px;
+    }
+
     #chat {
       height: 65vh;
       overflow-y: auto;
@@ -35,6 +42,7 @@
       border-radius: 15px;
       max-width: 80%;
       line-height: 1.5;
+      white-space: pre-wrap;
     }
 
     .usuario {
@@ -60,6 +68,7 @@
       border: none;
       border-radius: 10px;
       font-size: 16px;
+      outline: none;
     }
 
     button {
@@ -71,6 +80,11 @@
       font-weight: bold;
       cursor: pointer;
     }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
   </style>
 </head>
 
@@ -79,58 +93,160 @@
 <header>
   <h1>🤖 Sensei AI</h1>
   <p>🎹 Música • 📚 Estudio • 🧠 Aprendizaje</p>
+  <div id="estado">⏳ Preparando inteligencia artificial...</div>
 </header>
 
 <div id="chat">
   <div class="mensaje sensei">
-    ¡Hola! 👋 Soy Sensei AI. ¿En qué puedo ayudarte?
+    ¡Hola! 👋 Soy Sensei AI.
+    Estoy preparando mi cerebro. La primera carga puede tardar.
   </div>
 </div>
 
 <div class="entrada">
-  <input id="mensaje" placeholder="Escribe tu pregunta...">
-  <button onclick="enviar()">Enviar</button>
+  <input
+    id="mensaje"
+    placeholder="Escribe tu pregunta..."
+    disabled
+  >
+
+  <button id="enviar" onclick="enviar()" disabled>
+    Enviar
+  </button>
 </div>
 
-<script>
-function enviar() {
-  const input = document.getElementById("mensaje");
+<script type="module">
+
+  import {
+    pipeline
+  } from "https://cdn.jsdelivr.net/npm/@huggingface/transformers";
+
+  let modelo = null;
+
   const chat = document.getElementById("chat");
-  const texto = input.value.trim();
+  const input = document.getElementById("mensaje");
+  const boton = document.getElementById("enviar");
+  const estado = document.getElementById("estado");
 
-  if (!texto) return;
+  async function prepararIA() {
 
-  chat.innerHTML += `
-    <div class="mensaje usuario">${texto}</div>
-  `;
+    try {
 
-  input.value = "";
+      estado.textContent =
+        "🧠 Descargando el cerebro de Sensei AI...";
 
-  setTimeout(() => {
+      modelo = await pipeline(
+        "text-generation",
+        "HuggingFaceTB/SmolLM2-135M-Instruct"
+      );
+
+      estado.textContent =
+        "🟢 Sensei AI está listo";
+
+      input.disabled = false;
+      boton.disabled = false;
+
+      input.focus();
+
+    } catch (error) {
+
+      console.error(error);
+
+      estado.textContent =
+        "❌ No se pudo cargar el modelo";
+
+      chat.innerHTML += `
+        <div class="mensaje sensei">
+          No pude cargar mi modelo de IA.
+          Puede que este Chromebook no tenga suficiente memoria
+          o que la descarga haya fallado.
+        </div>
+      `;
+    }
+  }
+
+  async function enviar() {
+
+    const texto = input.value.trim();
+
+    if (!texto || !modelo) return;
+
     chat.innerHTML += `
-      <div class="mensaje sensei">
-        🤖 Soy Sensei AI. Mi cerebro de inteligencia artificial se conectará en el siguiente paso.
+      <div class="mensaje usuario">
+        ${texto}
       </div>
     `;
 
+    input.value = "";
+
+    boton.disabled = true;
+    input.disabled = true;
+
+    const mensajePensando = document.createElement("div");
+
+    mensajePensando.className = "mensaje sensei";
+    mensajePensando.textContent = "🧠 Pensando...";
+
+    chat.appendChild(mensajePensando);
+
     chat.scrollTop = chat.scrollHeight;
-  }, 500);
-}
-</script> 
-  document.querySelector("input").addEventListener("keydown", function(event) {
-  if (event.key === "Enter") {
-    enviar();
+
+    try {
+
+      const prompt =
+        `You are Sensei AI, a helpful educational assistant.
+Answer clearly and safely.
+Focus especially on music, audio and studying.
+
+User: ${texto}
+
+Sensei AI:`;
+
+      const resultado = await modelo(prompt, {
+        max_new_tokens: 150,
+        temperature: 0.7,
+        do_sample: true
+      });
+
+      let respuesta =
+        resultado[0].generated_text;
+
+      if (respuesta.includes("Sensei AI:")) {
+        respuesta =
+          respuesta.split("Sensei AI:").pop().trim();
+      }
+
+      mensajePensando.textContent =
+        respuesta || "No pude generar una respuesta.";
+
+    } catch (error) {
+
+      console.error(error);
+
+      mensajePensando.textContent =
+        "❌ Ocurrió un problema al generar la respuesta.";
+
+    }
+
+    boton.disabled = false;
+    input.disabled = false;
+
+    input.focus();
+
+    chat.scrollTop = chat.scrollHeight;
   }
-});
-<script type="module">
-  import { pipeline } from
-    "https://cdn.jsdelivr.net/npm/@huggingface/transformers";
 
-  const modelo = await pipeline(
-    "text-generation",
-    "HuggingFaceTB/SmolLM2-135M-Instruct"
-  );
+  input.addEventListener("keydown", function(event) {
 
-  console.log("🧠 Sensei AI está listo.");
-</script></body>
+    if (event.key === "Enter") {
+      enviar();
+    }
+
+  });
+
+  prepararIA();
+
+</script>
+
+</body>
 </html>

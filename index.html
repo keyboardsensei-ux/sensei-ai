@@ -104,16 +104,24 @@
 </div>
 
 <div class="entrada">
-  <input id="mensaje" placeholder="Escribe tu pregunta..." disabled>
-  <button id="enviar" disabled>Enviar</button>
+  <input
+    id="mensaje"
+    placeholder="Escribe tu pregunta..."
+    disabled
+  >
+
+  <button id="enviar" disabled>
+    Enviar
+  </button>
 </div>
 
 <script type="module">
 
-import { pipeline } from
-  "https://cdn.jsdelivr.net/npm/@huggingface/transformers";
+import { pipeline }
+from "https://cdn.jsdelivr.net/npm/@huggingface/transformers";
 
 let modelo = null;
+let generando = false;
 
 const chat = document.getElementById("chat");
 const input = document.getElementById("mensaje");
@@ -134,6 +142,145 @@ function agregarMensaje(texto, tipo) {
 
   return div;
 }
+
+
+/* ================================
+   FILTRO DE RESPUESTAS DEFECTUOSAS
+================================ */
+
+function respuestaDefectuosa(texto) {
+
+  if (!texto || texto.length < 2) {
+    return true;
+  }
+
+  const palabras = texto
+    .trim()
+    .split(/\s+/);
+
+  /* Demasiadas palabras para un modelo
+     tan pequeño suelen indicar que se perdió */
+  if (palabras.length > 120) {
+    return true;
+  }
+
+  /* Caracteres extraños */
+  const caracteresRaros =
+    (texto.match(/[�]/g) || []).length;
+
+  if (caracteresRaros >= 2) {
+    return true;
+  }
+
+  /* Muchas repeticiones consecutivas */
+  let repeticiones = 0;
+
+  for (let i = 1; i < palabras.length; i++) {
+
+    if (
+      palabras[i].toLowerCase() ===
+      palabras[i - 1].toLowerCase()
+    ) {
+      repeticiones++;
+    }
+  }
+
+  if (repeticiones >= 3) {
+    return true;
+  }
+
+  /* Frases que indican que el modelo
+     comenzó a repetir el prompt */
+  const basura = [
+    "answer:",
+    "response:",
+    "usuario:",
+    "user:",
+    "assistant:",
+    "respuesta:",
+    "immigrante:",
+    "última resposta:"
+  ];
+
+  const minusculas = texto.toLowerCase();
+
+  for (const palabra of basura) {
+
+    if (minusculas.includes(palabra)) {
+      return true;
+    }
+  }
+
+  /* Demasiados símbolos seguidos */
+  if (/[^a-záéíóúüñ0-9\s.,!?¿¡:;'"()\-/%+*=]/gi.test(texto)) {
+
+    const raros =
+      texto.match(/[^a-záéíóúüñ0-9\s.,!?¿¡:;'"()\-/%+*=]/gi);
+
+    if (raros && raros.length > 5) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+
+/* ================================
+   LIMPIAR RESPUESTA
+================================ */
+
+function limpiarRespuesta(texto) {
+
+  let respuesta = texto.trim();
+
+  if (respuesta.includes("Sensei AI:")) {
+
+    respuesta =
+      respuesta.substring(
+        respuesta.lastIndexOf("Sensei AI:") +
+        "Sensei AI:".length
+      );
+  }
+
+  respuesta = respuesta
+    .replace(/^Answer:\s*/i, "")
+    .replace(/^Response:\s*/i, "")
+    .replace(/^Respuesta:\s*/i, "")
+    .replace(/^Sensei AI:\s*/i, "")
+    .replace(/<\|endoftext\|>/gi, "")
+    .trim();
+
+  /* Si vuelve a empezar a escribir el prompt,
+     cortamos ahí */
+
+  const cortes = [
+    "\nUsuario:",
+    "\nUser:",
+    "\nPregunta:",
+    "\nRespuesta:",
+    "\nAnswer:"
+  ];
+
+  for (const corte of cortes) {
+
+    const posicion =
+      respuesta.indexOf(corte);
+
+    if (posicion !== -1) {
+
+      respuesta =
+        respuesta.substring(0, posicion).trim();
+    }
+  }
+
+  return respuesta;
+}
+
+
+/* ================================
+   CARGAR MODELO
+================================ */
 
 async function prepararIA() {
 
@@ -163,17 +310,26 @@ async function prepararIA() {
       "❌ No se pudo cargar el modelo";
 
     agregarMensaje(
-      "No pude cargar mi modelo de inteligencia artificial. Intenta recargar la página.",
+      "No pude cargar mi inteligencia artificial. Recarga la página e inténtalo otra vez.",
       "sensei"
     );
   }
 }
 
+
+/* ================================
+   GENERAR RESPUESTA
+================================ */
+
 async function enviar() {
 
   const texto = input.value.trim();
 
-  if (!texto || !modelo) return;
+  if (!texto || !modelo || generando) {
+    return;
+  }
+
+  generando = true;
 
   agregarMensaje(texto, "usuario");
 
@@ -183,104 +339,124 @@ async function enviar() {
   boton.disabled = true;
 
   const respuestaDiv =
-    agregarMensaje("🧠 Pensando...", "sensei");
+    agregarMensaje(
+      "🧠 Pensando...",
+      "sensei"
+    );
 
   const prompt =
-`Eres Sensei AI, un asistente educativo.
+`Eres Sensei AI, un asistente educativo en español.
 
-IMPORTANTE:
-- Responde SIEMPRE en español.
-- Responde únicamente a la pregunta del usuario.
-- Sé claro, breve y útil.
-- No repitas frases.
-- No cambies de tema.
-- No escribas "Answer:".
-- No escribas "Response:".
-- No inventes información.
-- Si no sabes algo, dilo.
-- Ayuda especialmente con música, teclado, audio y estudio.
+REGLAS IMPORTANTES:
+1. Responde únicamente en español.
+2. Responde directamente a la pregunta.
+3. Sé claro y preciso.
+4. No inventes datos.
+5. No repitas palabras ni frases.
+6. No cambies de tema.
+7. No escribas la pregunta del usuario.
+8. No escribas "Answer", "Response" ni "Usuario".
+9. Si no sabes la respuesta, dilo claramente.
+10. Para música, explica acordes, escalas, teclado y teoría de forma sencilla.
 
-Usuario:
+Pregunta del usuario:
 ${texto}
 
-Sensei AI:`;
+Respuesta de Sensei AI:`;
+
 
   try {
 
-    const resultado = await modelo(prompt, {
+    const resultado =
+      await modelo(prompt, {
 
-      max_new_tokens: 100,
+        max_new_tokens: 70,
 
-      temperature: 0.2,
+        temperature: 0.15,
 
-      do_sample: true,
+        do_sample: true,
 
-      repetition_penalty: 1.3,
+        repetition_penalty: 1.35,
 
-      no_repeat_ngram_size: 3
+        no_repeat_ngram_size: 4
 
-    });
+      });
+
 
     let respuesta =
-      resultado[0]?.generated_text || "";
+      resultado?.[0]?.generated_text || "";
 
-    if (respuesta.includes("Sensei AI:")) {
-
-      respuesta =
-        respuesta.substring(
-          respuesta.lastIndexOf("Sensei AI:") +
-          "Sensei AI:".length
-        );
-    }
 
     respuesta =
-      respuesta.trim();
+      limpiarRespuesta(respuesta);
 
-    respuesta =
-      respuesta
-        .replace(/^Answer:\s*/i, "")
-        .replace(/^Response:\s*/i, "")
-        .replace(/^Respuesta:\s*/i, "")
-        .trim();
 
-    if (!respuesta) {
+    /* ================================
+       FILTRO FINAL
+    ================================= */
+
+    if (respuestaDefectuosa(respuesta)) {
 
       respuesta =
-        "No pude generar una respuesta. Intenta preguntarlo de otra manera.";
-
+        "🤔 No pude generar una respuesta confiable. " +
+        "Este modelo es pequeño y a veces se confunde. " +
+        "Intenta hacer la pregunta de otra manera.";
     }
+
 
     respuestaDiv.textContent =
       respuesta;
+
 
   } catch (error) {
 
     console.error(error);
 
     respuestaDiv.textContent =
-      "❌ Ocurrió un problema al generar la respuesta.";
+      "❌ No pude generar una respuesta. Inténtalo nuevamente.";
 
   }
+
 
   input.disabled = false;
   boton.disabled = false;
 
+  generando = false;
+
   input.focus();
 
-  chat.scrollTop = chat.scrollHeight;
+  chat.scrollTop =
+    chat.scrollHeight;
 }
 
-boton.addEventListener("click", enviar);
 
-input.addEventListener("keydown", function(event) {
+/* ================================
+   BOTONES
+================================ */
 
-  if (event.key === "Enter") {
+boton.addEventListener(
+  "click",
+  enviar
+);
 
-    enviar();
 
+input.addEventListener(
+  "keydown",
+  function(event) {
+
+    if (event.key === "Enter") {
+
+      event.preventDefault();
+
+      enviar();
+    }
   }
+);
 
-});
+
+/* ================================
+   INICIAR SENSEI AI
+================================ */
 
 prepararIA();
 
